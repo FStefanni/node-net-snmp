@@ -2,15 +2,19 @@
   "name": "net-snmp",
   "version": "3.10.3",
   "description": "JavaScript implementation of the Simple Network Management Protocol (SNMP)",
-  "main": "index.js",
+  "main": "dist/cjs/src/index.js",
+  "types": "dist/cjs/src/index.d.js",
+  "module": "dist/mjs/src/index.js",
+  "type": "commonjs",
   "directories": {
     "example": "example"
   },
   "dependencies": {
-    "asn1-ber": "^1.2.1",
-    "smart-buffer": "^4.1.0"
+    "asn1-ber": "file:../node-asn1-ber",
+    "smart-buffer": "^4.2.0"
   },
   "devDependencies": {
+    "@types/node": "^20.11.22",
     "eslint": "^5.16.0",
     "getopts": "*"
   },
@@ -47,6 +51,7 @@
   "author": "Mark Abrahams <mark@abrahams.co.nz>",
   "license": "MIT",
   "scripts": {
-    "lint": "./node_modules/.bin/eslint . ./**/*.js"
+    "build": "tsc",
+    "lint": "./node_modules/.bin/eslint . ./**/*.ts"
   }
 }

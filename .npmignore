@@ -2,3 +2,17 @@ TODO
 .hgignore
 .hgtags
 node_modules
+.gitignore
+/test
+/.eslintignore
+/tests/*
+/.eslintrc
+/.travis.yml
+/.gitlab-ci.yml
+/doc/*
+/public
+/scripts
+/src
+/.vscode
+/tsconfig.json
+/.semversioner

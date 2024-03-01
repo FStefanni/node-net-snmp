@@ -1,9 +1,64 @@
-var fs = require('fs');
+import fs from 'node:fs';
 
-var MIB = function (dir) {
+type SyntaxObj = {
+    [name: string]: {
+        [name2: string]: Array<{ min: number; max: number; }> | string
+    }
+};
 
-    var initializeBuffer = function (buffer) {
-        return Object.assign(buffer, {
+type TTTT = {
+    ObjectName: string;
+    ModuleName: string;
+    "OBJECT IDENTIFIER": string;
+    OID: string;
+    NameSpace: string;
+    MACRO: string;
+    SYNTAX: string | SyntaxObj;
+    DESCRIPTION: string;
+    "REVISIONS-DESCRIPTIONS"?: Array<{
+        "type": string;
+        "value": any;
+    }>;
+    ACCESS: string;
+    AUGMENTS: string;
+    INDEX: string;
+} & {[unknownName: string]: string | null | Array<string>};
+
+export default function MIB (dir?: string) {
+
+    function initializeBuffer (buffer: typeof newMIB.CharBuffer) {
+        buffer.logit = false;
+        buffer.lastChar = '';
+        buffer.state = '';
+        buffer.open = false;
+        buffer.CurrentSymbol = '';
+        buffer.nested = 0;
+        buffer.isComment = false;
+        buffer.isEqual = false;
+        buffer.isOID = false;
+        buffer.isList = false;
+        buffer.isString = false;
+        buffer.inComment = false;
+        buffer.inGroup = 0;
+        buffer.builder = '';
+        buffer.ColumnIndex = 0;
+        buffer.RowIndex = 0;
+        buffer.PreviousRow = 0;
+        return buffer;
+    };
+
+    const newMIB = ({
+        directory: dir ? dir : '',
+        SymbolBuffer: {} as {[moduleName: string]: Array<string>},
+        StringBuffer: '',
+        Modules: {} as {[moduleName: string]: {[name: string]: TTTT}},
+        Objects: {},
+        MACROS: new Array<string>(),
+        CurrentObject: null,
+        TempObject: {},
+        CurrentClause: '',
+        WaitFor: '',
+        CharBuffer: {
             logit: false,
             lastChar: '',
             state: '',
@@ -17,38 +72,23 @@ var MIB = function (dir) {
             isString: false,
             inComment: false,
             inGroup: 0,
-            builder: '',
+            builder: '' as string & {},
             ColumnIndex: 0,
             RowIndex: 0,
-            PreviousRow: 0
-        });
-    };
+            PreviousRow: 0,
 
-    var newMIB = ({
-        directory: dir ? dir : '',
-        SymbolBuffer: {},
-        StringBuffer: '',
-        Modules: {},
-        Objects: {},
-        MACROS: [],
-        CurrentObject: null,
-        TempObject: {},
-        CurrentClause: '',
-        WaitFor: '',
-        CharBuffer: {
-            Table: {},
-            ModuleName: {},
-            Append: function (char) {
+            Table: {} as {[fileName: string]: Array<Array<string>>},
+            ModuleName: {} as {[fileName: string]: string},
+            Append: function (char: string): void {
                 this.builder += char;
             },
-            Fill: function (FileName, row, column) {
+            Fill: function (FileName: string, row: number, column: number): void {
                 if (this.builder.length == 0) {
                     return;
                 }
                 column = (column - this.builder.length);
                 var symbol = this.builder.toString().trim();
                 this.builder = "";
-                this.builder.length = 0;
                 if (!this.Table[FileName]) {
                     this.Table[FileName] = [];
                 } else if (this.PreviousRow < row) {
@@ -60,8 +100,8 @@ var MIB = function (dir) {
                 var R = this.RowIndex;
                 var C = this.ColumnIndex;
 
-                if (!this.Table[FileName][R] || C === 0) {
-                    this.Table[FileName][R] = Object.defineProperty([], "line", {
+                if (!this.Table[FileName]![R] || C === 0) {
+                    this.Table[FileName]![R] = Object.defineProperty([], "line", {
                         enumerable: false,
                         value: row + 1
                     });
@@ -69,80 +109,80 @@ var MIB = function (dir) {
                 this.isEqual = false;
                 switch (symbol) {
                     case ')':
-                        this.Table[FileName][R][C] = symbol;
+                        this.Table[FileName]![R]![C] = symbol;
                         this.ColumnIndex++;
                         this.logit = false;
                         break;
                     case '(':
-                        this.Table[FileName][R][C] = symbol;
+                        this.Table[FileName]![R]![C] = symbol;
                         this.ColumnIndex++;
                         this.logit = true;
                         break;
                     case 'DEFINITIONS':
                         if (C == 0) {
-                            this.ModuleName[FileName] = this.Table[FileName][R - 1][C];
+                            this.ModuleName[FileName] = this.Table[FileName]![R - 1]![C]!;
                         } else {
-                            this.ModuleName[FileName] = this.Table[FileName][R][C - 1];
+                            this.ModuleName[FileName] = this.Table[FileName]![R]![C - 1]!;
                         }
-                        this.Table[FileName][R][C] = symbol;
+                        this.Table[FileName]![R]![C] = symbol;
                         this.ColumnIndex++;
                         break;
                     case '::=':
-                        this.Table[FileName][R][C] = symbol;
+                        this.Table[FileName]![R]![C] = symbol;
                         this.ColumnIndex++;
                         this.isEqual = true;
                         break;
                     case '{':
-                        if (this.Table[FileName][R][C - 1] != '::=') {
+                        if (this.Table[FileName]![R]![C - 1] != '::=') {
                             this.isList = true;
                         }
-                        this.Table[FileName][R][C] = symbol;
+                        this.Table[FileName]![R]![C] = symbol;
                         this.ColumnIndex++;
                         break;
                     case 'NOTATION':
-                        if (this.Table[FileName][R][C - 1] == 'TYPE' || this.Table[FileName][R][C - 1] == 'VALUE') {
-                            this.Table[FileName][R][C - 1] += ' NOTATION';
+                        if (this.Table[FileName]![R]![C - 1] == 'TYPE' || this.Table[FileName]![R]![C - 1] == 'VALUE') {
+                            this.Table[FileName]![R]![C - 1] += ' NOTATION';
                         }
                         break;
 
                     case 'OF':
-                        if (this.Table[FileName][R][C - 1] == 'SEQUENCE') {
-                            this.Table[FileName][R][C - 1] = 'SEQUENCE OF';
+                        if (this.Table[FileName]![R]![C - 1] == 'SEQUENCE') {
+                            this.Table[FileName]![R]![C - 1] = 'SEQUENCE OF';
                         }
                         break;
                     case 'IDENTIFIER':
-                        if (this.Table[FileName][R][C - 1] == 'OBJECT') {
-                            this.Table[FileName][R][C - 1] = 'OBJECT IDENTIFIER';
+                        if (this.Table[FileName]![R]![C - 1] == 'OBJECT') {
+                            this.Table[FileName]![R]![C - 1] = 'OBJECT IDENTIFIER';
                         }
                         break;
                     case 'STRING':
-                        if (this.Table[FileName][R][C - 1] == 'OCTET') {
-                            this.Table[FileName][R][C - 1] = 'OCTET STRING';
+                        if (this.Table[FileName]![R]![C - 1] == 'OCTET') {
+                            this.Table[FileName]![R]![C - 1] = 'OCTET STRING';
                         }
                         break;
                     default:
-                        this.Table[FileName][R][C] = symbol;
+                        this.Table[FileName]![R]![C] = symbol;
                         this.ColumnIndex++;
                         break;
                 }
 
             }
         },
-        Import: function (FileName) {
-            this.ParseModule(FileName.split('/')[FileName.split('/').length - 1].split('.')[0], fs.readFileSync(FileName).toString());
+        Import: function (FileName: string): void {
+            this.ParseModule(FileName.split('/')[FileName.split('/').length - 1]!.split('.')[0]!, fs.readFileSync(FileName).toString());
         },
-        ParseModule: function (FileName, Contents) {
+        ParseModule: function (FileName: string, Contents: string): void {
             initializeBuffer(this.CharBuffer);
 
             var lines = Contents.split('\n');
             var line = '';
             var i = 0;
-            while ((line = lines[i]) != null && i <= lines.length) {
+            while ((line = lines[i]!) != null && i <= lines.length) {
                 this.ParseLine(FileName, line, i);
                 i++;
             }
         },
-        ParseLine: function (FileName, line, row) {
+        ParseLine: function (FileName: string, line: string, row: number): void {
             let len = line.length;
             if (line[len - 1] === '\r')
                 --len;
@@ -152,7 +192,7 @@ var MIB = function (dir) {
             }
             this.ParseChar(FileName, '\n', row, len);
         },
-        ParseChar: function (FileName, char, row, column) {
+        ParseChar: function (FileName: string, char: string, row: number, column: number): void {
             switch (char) {
                 case '\r':
                 case '\n':
@@ -164,6 +204,7 @@ var MIB = function (dir) {
                         this.CharBuffer.Append(char);
                     }
                     break;
+                // @ts-ignore
                 case '{':
                     if ( ! this.CharBuffer.isComment && this.CharBuffer.isEqual ) { this.CharBuffer.isOID = true; }
                 case '[':
@@ -243,7 +284,7 @@ var MIB = function (dir) {
                     this.CharBuffer.Append(char);
                     if (!this.CharBuffer.isString && this.CharBuffer.lastChar == '-') {
                         this.CharBuffer.isComment = true;
-                        this.CharBuffer.builder = this.CharBuffer.builder.split('--')[0];
+                        this.CharBuffer.builder = this.CharBuffer.builder.split('--')[0]!;
                         this.CharBuffer.Fill(FileName, row, column);
                         this.CharBuffer.builder = '--';
                     }
@@ -290,19 +331,19 @@ var MIB = function (dir) {
             }
             this.CharBuffer.lastChar = char;
         },
-        Serialize: function () {
+        Serialize: function (): void {
             var Table = this.CharBuffer.Table;
             var ModuleName = '';
             for (var FileName in Table) {
-                ModuleName = this.CharBuffer.ModuleName[FileName];
+                ModuleName = this.CharBuffer.ModuleName[FileName]!;
                 this.SymbolBuffer[ModuleName] = [];
                 var foundTheEnd = false;
                 var lastGoodDeclaration = [ 'none' ];
-                var file = Table[FileName];
+                var file = Table[FileName]!;
                 for (var r = 0; r < file.length; r++) {
-                    var row = file[r];
+                    var row = file[r]!;
                     for (var c = 0; c < row.length; c++) {
-                        var symbol = row[c];
+                        var symbol = row[c]!;
                         var addSymbol = true;
                         switch (symbol) {
                             case 'END':
@@ -321,7 +362,7 @@ var MIB = function (dir) {
                                 }
                         }
                         if (addSymbol) {
-                            this.SymbolBuffer[ModuleName].push(symbol);
+                            this.SymbolBuffer[ModuleName]!.push(symbol);
                         }
                     }
                 }
@@ -329,28 +370,28 @@ var MIB = function (dir) {
                     // Warn that the contents are malformed
                     console.warn(
                         '[%s]: Incorrect formatting: no END statement found - last good declaration "%s" (line %s)',
-                        ModuleName, lastGoodDeclaration.join(' '), lastGoodDeclaration.line
+                        ModuleName, lastGoodDeclaration.join(' '), (lastGoodDeclaration as any).line
                     );
                 }
 
             }
             this.Compile();
         },
-        Compile: function () {
+        Compile: function (): void {
             for (var ModuleName in this.SymbolBuffer) {
                 if (this.SymbolBuffer.hasOwnProperty(ModuleName)) {
                     if (!this.Modules[ModuleName]) {
-                        this.Modules[ModuleName] = {};
+                        this.Modules[ModuleName] = {} as {[name: string]: TTTT};
                     }
-                    var Module = this.Modules[ModuleName];
-                    var Symbols = this.SymbolBuffer[ModuleName];
+                    var Module = this.Modules[ModuleName]!;
+                    var Symbols = this.SymbolBuffer[ModuleName]!;
                     var Object = Module;
                     var MACROName = '';
                     for (var i = 0; i < Symbols.length; i++) {
                         switch (Symbols[i]) {
                             case '::=': //new OBJECT to define
                                 //if OBJECT IDENTIFIER tag IS NEXT, FIND MARCO TO CALL...
-                                if (Symbols[i + 1].indexOf('{') == 0) {
+                                if (Symbols[i + 1]!.indexOf('{') == 0) {
                                     var r = i - 1;
                                     var found = false;
                                     //Go back and find the MACRO to call
@@ -364,31 +405,31 @@ var MIB = function (dir) {
                                         }
                                     }
                                     if (Symbols[i - 1] == 'OBJECT IDENTIFIER') {
-                                        Object[Symbols[i - 2]] = {};
-                                        Object[Symbols[i - 2]]['ObjectName'] = Symbols[i - 2];
-                                        Object[Symbols[i - 2]]['ModuleName'] = ModuleName;
-                                        Object[Symbols[i - 2]]['OBJECT IDENTIFIER'] = Symbols[i + 1].replace("{", "").replace("}", "").trim().replace(/\s+/, " ");
-                                        if (Object[Symbols[i - 2]]['OBJECT IDENTIFIER'] == '0 0') {
-                                            Object[Symbols[i - 2]]['OID'] = '0.0';
-                                            Object[Symbols[i - 2]]['NameSpace'] = 'null';
+                                        Object[Symbols[i - 2]!] = {} as TTTT;
+                                        Object[Symbols[i - 2]!]!['ObjectName'] = Symbols[i - 2]!;
+                                        Object[Symbols[i - 2]!]!['ModuleName'] = ModuleName;
+                                        Object[Symbols[i - 2]!]!['OBJECT IDENTIFIER'] = Symbols[i + 1]!.replace("{", "").replace("}", "").trim().replace(/\s+/, " ");
+                                        if (Object[Symbols[i - 2]!]!['OBJECT IDENTIFIER'] == '0 0') {
+                                            Object[Symbols[i - 2]!]!['OID'] = '0.0';
+                                            Object[Symbols[i - 2]!]!['NameSpace'] = 'null';
                                         } else {
-                                            this.OID(Object[Symbols[i - 2]]['OBJECT IDENTIFIER'], '', Symbols[i - 2], '', function (ID, OD) {
+                                            this.OID(Object[Symbols[i - 2]!]!['OBJECT IDENTIFIER'], '', Symbols[i - 2]!, '', function (ID, OD) {
 
-                                                Object[Symbols[i - 2]]['OID'] = ID;
-                                                Object[Symbols[i - 2]]['NameSpace'] = OD;
+                                                Object[Symbols[i - 2]!]!['OID'] = ID;
+                                                Object[Symbols[i - 2]!]!['NameSpace'] = OD;
                                                 //Object[Symbols[i - 2]]['ModuleName'] = ModuleName;
                                                 // Object[Symbols[i - 2]]['ObjectName'] = Symbols[i - 2];
                                             });
                                         }
 
                                     } else {
-                                        var ObjectName = Symbols[r - 1];
-                                        Object[ObjectName] = {};
-                                        Object[ObjectName]['ObjectName'] = ObjectName;
-                                        Object[ObjectName]['ModuleName'] = ModuleName;
-                                        Object[ObjectName]['MACRO'] = Symbols[r];
+                                        var ObjectName = Symbols[r - 1]!;
+                                        Object[ObjectName] = {} as TTTT;
+                                        Object[ObjectName]!['ObjectName'] = ObjectName;
+                                        Object[ObjectName]!['ModuleName'] = ModuleName;
+                                        Object[ObjectName]!['MACRO'] = Symbols[r]!;
                                         //BUILD OBJECT FROM MACRO TYPE NOTATION
-                                        var MARCO = this[Symbols[r]];
+                                        var MARCO = (this as any)[Symbols[r]!];
                                         if (!MARCO) {
                                             //HACK IF MARCO IS NOT FOUND
                                             //MARCO = {};
@@ -416,11 +457,11 @@ var MIB = function (dir) {
                                             var regExp = /\(([^)]+)\)/; //in parentheses ex: "ethernet-csmacd (6)"
 
                                             if (keychain.indexOf(key) > -1 || key == 'REVISION') {
-                                                var val = Symbols[c1 + 1].replace(/"/g, "");
+                                                var val: any = Symbols[c1 + 1]!.replace(/"/g, "");
                                                 //if value array.
                                                 if (val.indexOf("{") == 0) {
                                                     c1++;
-                                                    while (Symbols[c1].indexOf("}") == -1) {
+                                                    while (Symbols[c1]!.indexOf("}") == -1) {
                                                         c1++;
                                                         val += Symbols[c1];
                                                     }
@@ -440,49 +481,49 @@ var MIB = function (dir) {
                                                             case 'INTEGER':
                                                             case 'Integer32':
                                                                 // integer value array e.g. INTEGER {...rfc877-x25 (5), ethernet-csmacd (6)...}
-                                                                if (Symbols[c1 + 2].indexOf("{") == 0) {
+                                                                if (Symbols[c1 + 2]!.indexOf("{") == 0) {
                                                                     var valObj = val;
                                                                     val = {};
                                                                     val[valObj] = {};
                                                                     c1 = c1 + 1;
                                                                     var integer;
                                                                     var syntax;
-                                                                    while (Symbols[c1].indexOf("}") == -1) {
+                                                                    while (Symbols[c1]!.indexOf("}") == -1) {
                                                                         c1++;
                                                                         var ok = false;
-                                                                        if (Symbols[c1].indexOf("(") == 0 && Symbols[c1].length > 1) {
-                                                                            integer = regExp.exec(Symbols[c1]);
+                                                                        if (Symbols[c1]!.indexOf("(") == 0 && Symbols[c1]!.length > 1) {
+                                                                            integer = regExp.exec(Symbols[c1]!);
                                                                             syntax = Symbols[c1 - 1];
                                                                             ok = true;
-                                                                        } else if (Symbols[c1].indexOf("(") > 0) {
-                                                                            integer = regExp.exec(Symbols[c1]);
-                                                                            syntax = Symbols[c1].split("(")[0];
+                                                                        } else if (Symbols[c1]!.indexOf("(") > 0) {
+                                                                            integer = regExp.exec(Symbols[c1]!);
+                                                                            syntax = Symbols[c1]!.split("(")[0];
                                                                             ok = true;
                                                                         }
                                                                         if (syntax && syntax.indexOf("{") == 0) {
-                                                                            syntax = syntax.split("{")[1].trim();
+                                                                            syntax = syntax.split("{")[1]!.trim();
                                                                         }
                                                                         if (ok) {
-                                                                            val[valObj][integer[1]] = syntax;
+                                                                            val[valObj][integer![1]!] = syntax;
                                                                         }
                                                                     }
                                                                 // integer range e.g. INTEGER (1..2147483647)
-                                                                } else if (Symbols[c1 + 2].indexOf("(") == 0) {
+                                                                } else if (Symbols[c1 + 2]!.indexOf("(") == 0) {
                                                                     let valObj = val;
                                                                     val = {};
                                                                     val[valObj] = {
-                                                                        ranges: this.GetRanges(Symbols[c1 + 2])
+                                                                        ranges: this.GetRanges(Symbols[c1 + 2]!)
                                                                     };
                                                                 }
                                                                 break;
                                                             case 'OCTET STRING':
                                                             case 'DisplayString':
                                                                 // string size e.g. OCTET STRING (SIZE (0..127))
-                                                                if (Symbols[c1 + 2].replace(/ */g, '').startsWith('(SIZE')) {
+                                                                if (Symbols[c1 + 2]!.replace(/ */g, '').startsWith('(SIZE')) {
                                                                     let valObj = val;
                                                                     val = {};
                                                                     val[valObj] = {
-                                                                        sizes: this.GetRanges(Symbols[c1 + 2])
+                                                                        sizes: this.GetRanges(Symbols[c1 + 2]!)
                                                                     };
                                                                 }
                                                                 break;
@@ -494,57 +535,57 @@ var MIB = function (dir) {
                                                                 break;
                                                         }
                                                         //SYNTAX value
-                                                        Object[ObjectName][key] = val;
+                                                        Object[ObjectName]![key] = val;
                                                         break;
                                                     case 'DESCRIPTION':
-                                                        if ( ! Object[ObjectName][key] ) {
-                                                            Object[ObjectName][key] = val;
+                                                        if ( ! Object[ObjectName]![key] ) {
+                                                            Object[ObjectName]![key] = val;
                                                         }
-                                                        if ( ! Object[ObjectName]['REVISIONS-DESCRIPTIONS'] ) {
-                                                            Object[ObjectName]['REVISIONS-DESCRIPTIONS'] = [];
+                                                        if ( ! Object[ObjectName]!['REVISIONS-DESCRIPTIONS'] ) {
+                                                            Object[ObjectName]!['REVISIONS-DESCRIPTIONS'] = [];
                                                         }
-                                                        Object[ObjectName]['REVISIONS-DESCRIPTIONS'].push ({
+                                                        Object[ObjectName]!['REVISIONS-DESCRIPTIONS']!.push ({
                                                             "type": "DESCRIPTION",
                                                             "value": val
                                                         });
                                                         break;
                                                     case 'REVISION':
-                                                        if ( ! Object[ObjectName]['REVISIONS-DESCRIPTIONS'] ) {
-                                                            Object[ObjectName]['REVISIONS-DESCRIPTIONS'] = [];
+                                                        if ( ! Object[ObjectName]!['REVISIONS-DESCRIPTIONS'] ) {
+                                                            Object[ObjectName]!['REVISIONS-DESCRIPTIONS'] = [];
                                                         }
-                                                        Object[ObjectName]['REVISIONS-DESCRIPTIONS'].push ({
+                                                        Object[ObjectName]!['REVISIONS-DESCRIPTIONS']!.push ({
                                                             "type": "REVISION",
                                                             "value": val
                                                         });
                                                         break;
                                                     default:
-                                                        Object[ObjectName][key] = val;
+                                                        Object[ObjectName]![key!] = val;
                                                         break;
                                                 }
                                             }
 
 
                                         }
-                                        Object[Symbols[r - 1]]['ObjectName'] = Symbols[r - 1];
-                                        Object[Symbols[r - 1]]['ModuleName'] = ModuleName;
-                                        Object[Symbols[r - 1]]['OBJECT IDENTIFIER'] = Symbols[i + 1].replace("{", "").replace("}", "").trim().replace(/\s+/, " ");
+                                        Object[Symbols[r - 1]!]!['ObjectName'] = Symbols[r - 1]!;
+                                        Object[Symbols[r - 1]!]!['ModuleName'] = ModuleName;
+                                        Object[Symbols[r - 1]!]!['OBJECT IDENTIFIER'] = Symbols[i + 1]!.replace("{", "").replace("}", "").trim().replace(/\s+/, " ");
 
-                                        if (Object[Symbols[r - 1]]['OBJECT IDENTIFIER'] == '0 0') {
-                                            Object[Symbols[r - 1]]['OID'] = '0.0';
-                                            Object[Symbols[r - 1]]['NameSpace'] = 'null';
+                                        if (Object[Symbols[r - 1]!]!['OBJECT IDENTIFIER'] == '0 0') {
+                                            Object[Symbols[r - 1]!]!['OID'] = '0.0';
+                                            Object[Symbols[r - 1]!]!['NameSpace'] = 'null';
                                         } else {
-                                            this.OID(Object[Symbols[r - 1]]['OBJECT IDENTIFIER'], '', Symbols[r - 1], '', function (ID, OD) {
+                                            this.OID(Object[Symbols[r - 1]!]!['OBJECT IDENTIFIER'], '', Symbols[r - 1]!, '', function (ID, OD) {
 
-                                                Object[Symbols[r - 1]]['OID'] = ID;
-                                                Object[Symbols[r - 1]]['NameSpace'] = OD;
+                                                Object[Symbols[r - 1]!]!['OID'] = ID;
+                                                Object[Symbols[r - 1]!]!['NameSpace'] = OD;
                                                 //Object[Symbols[r - 1]]['ModuleName'] = ModuleName;
                                                 //Object[Symbols[r - 1]]['ObjectName'] = Symbols[r - 1];
                                             });
                                         }
-                                        if ( Object[Symbols[r - 1]]['REVISIONS-DESCRIPTIONS'] &&
-                                                Object[Symbols[r - 1]]['REVISIONS-DESCRIPTIONS'].length == 1 &&
-                                                Object[Symbols[r - 1]]['REVISIONS-DESCRIPTIONS'][0]['type'] == 'DESCRIPTION' ) {
-                                            delete Object[Symbols[r - 1]]['REVISIONS-DESCRIPTIONS'];
+                                        if ( Object[Symbols[r - 1]!]!['REVISIONS-DESCRIPTIONS'] &&
+                                                Object[Symbols[r - 1]!]!['REVISIONS-DESCRIPTIONS']!.length == 1 &&
+                                                Object[Symbols[r - 1]!]!['REVISIONS-DESCRIPTIONS']![0]!['type'] == 'DESCRIPTION' ) {
+                                            delete Object[Symbols[r - 1]!]!['REVISIONS-DESCRIPTIONS'];
                                         }
 
                                     }
@@ -556,27 +597,27 @@ var MIB = function (dir) {
                                         case 'OBJECT IDENTIFIER':
                                             break;
                                         case 'MACRO':
-                                            Object = Object[Symbols[i - 2]] = {};
-                                            MACROName = Symbols[i - 2];
+                                            Object = Object[Symbols[i - 2]!] = {} as any;
+                                            MACROName = Symbols[i - 2]!;
                                             break;
                                         case 'VALUE NOTATION':
                                         case 'TYPE NOTATION':
-                                            Object[Symbols[i - 1]] = {};
+                                            Object[Symbols[i - 1]!] = {} as TTTT;
                                             var j = i + 1;
                                             while (Symbols[j + 1] != '::=' && Symbols[j + 1] != 'END') {
-                                                if (Symbols[j].indexOf('"') == 0) {
-                                                    var value = Symbols[j + 1];
+                                                if (Symbols[j]!.indexOf('"') == 0) {
+                                                    var value = Symbols[j + 1]!;
                                                     var t = j + 1;
-                                                    if (Symbols[j + 2].indexOf('(') == 0) {
-                                                        value = Symbols[j + 2];
+                                                    if (Symbols[j + 2]!.indexOf('(') == 0) {
+                                                        value = Symbols[j + 2]!;
                                                         t = j + 2;
                                                     }
-                                                    Object[Symbols[i - 1]][Symbols[j].replace(/"/g, "")] = value;
+                                                    Object[Symbols[i - 1]!]![Symbols[j]!.replace(/"/g, "")] = value;
                                                     j = t;
                                                 } else {
-                                                    Object[Symbols[i - 1]][Symbols[j]] = null;
-                                                    if (Symbols[j + 1].indexOf('(') == 0) {
-                                                        Object[Symbols[i - 1]][Symbols[j]] = Symbols[j + 1];
+                                                    Object[Symbols[i - 1]!]![Symbols[j]!] = null;
+                                                    if (Symbols[j + 1]!.indexOf('(') == 0) {
+                                                        Object[Symbols[i - 1]!]![Symbols[j]!] = Symbols[j + 1]!;
                                                         j++;
                                                     }
                                                 }
@@ -584,22 +625,22 @@ var MIB = function (dir) {
                                             }
                                             // Workaround for lack of INDEX, AUGMENTS and ACCESS in OBJECT-TYPE MACRO "TYPE NOTATION"
                                             if ( ModuleName == "SNMPv2-SMI" ) {
-                                                Object["TYPE NOTATION"].INDEX = "Index";
-                                                Object["TYPE NOTATION"].AUGMENTS = "Augments";
-                                                Object["TYPE NOTATION"].ACCESS = "Access";
+                                                Object["TYPE NOTATION"]!.INDEX = "Index";
+                                                Object["TYPE NOTATION"]!.AUGMENTS = "Augments";
+                                                Object["TYPE NOTATION"]!.ACCESS = "Access";
                                             } else if ( ModuleName == "RFC-1212" ) {
-                                                Object["TYPE NOTATION"].INDEX = "Index";
-                                                Object["TYPE NOTATION"].ACCESS = "Access";
+                                                Object["TYPE NOTATION"]!.INDEX = "Index";
+                                                Object["TYPE NOTATION"]!.ACCESS = "Access";
                                             }
                                             // End INDEX/AUGMENTS workaround
                                             break;
                                         default:
                                             //new object
-                                            Object[Symbols[i - 1]] = {};
-                                            Object[Symbols[i - 1]]['ObjectName'] = Symbols[i - 1];
-                                            Object[Symbols[i - 1]]['ModuleName'] = ModuleName;
-                                            Object[Symbols[i - 1]]['MACRO'] = Symbols[i + 1];
-                                            this.BuildObject(Object, Symbols[i - 1], Symbols[i + 1], i, Symbols);
+                                            Object[Symbols[i - 1]!] = {} as TTTT;
+                                            Object[Symbols[i - 1]!]!['ObjectName'] = Symbols[i - 1]!;
+                                            Object[Symbols[i - 1]!]!['ModuleName'] = ModuleName;
+                                            Object[Symbols[i - 1]!]!['MACRO'] = Symbols[i + 1]!;
+                                            this.BuildObject(Object, Symbols[i - 1]!, Symbols[i + 1]!, i, Symbols);
                                             break;
                                     }
                                 }
@@ -608,7 +649,7 @@ var MIB = function (dir) {
                                 if (MACROName != '') {
                                     //ADD macros to root for easier processing
                                     //Still need Import feature
-                                    this[MACROName] = Object;
+                                    (this as any)[MACROName] = Object;
                                     this.MACROS.push(MACROName);
                                 }
                                 //reset Object to Module root;
@@ -618,21 +659,21 @@ var MIB = function (dir) {
                             case 'IMPORTS':
                                 //console.log(ModuleName, 'IMPORTS');
                                 //i++;
-                                Module['IMPORTS'] = {};
+                                Module['IMPORTS'] = {} as TTTT;
                                 var tmp = i + 1;
-                                var IMPORTS = [];
+                                var IMPORTS = new Array<string>();
                                 while (Symbols[tmp] != ';') {
                                     if (Symbols[tmp] == 'FROM') {
-                                        var ImportModule = Symbols[tmp + 1];
+                                        var ImportModule = Symbols[tmp + 1]!;
                                         if (!this.Modules[ImportModule]) {
                                             console.log(ModuleName + ': Can not find ' + ImportModule + '!!!!!!!!!!!!!!!!!!!!!');
                                             console.log(ModuleName + ': Can not import ', IMPORTS);
                                         }
-                                        Module['IMPORTS'][ImportModule] = IMPORTS;
+                                        Module['IMPORTS']![ImportModule] = IMPORTS;
                                         tmp++;
                                         IMPORTS = [];
                                     } else if (Symbols[tmp] != ',') {
-                                        IMPORTS.push(Symbols[tmp]);
+                                        IMPORTS.push(Symbols[tmp]!);
                                     }
                                     tmp++;
                                 }
@@ -650,7 +691,7 @@ var MIB = function (dir) {
                 }
             }
         },
-        GetRanges: function (mibRanges) {
+        GetRanges: function (mibRanges: string): Array<{min: number; max: number}> {
             let rangesString = mibRanges.replace(/ */g, '').replace(/\(SIZE/, '').replace(/\)/, '').replace(/\(/, '').replace(/\)/, '');
             let rangeStrings = rangesString.split('|');
             let ranges = [];
@@ -659,8 +700,8 @@ var MIB = function (dir) {
                 if ( rangeString.includes('..') ) {
                     let range = rangeString.split('..');
                     ranges.push({
-                        min: parseInt(range[0], 10),
-                        max: parseInt(range[1], 10)
+                        min: parseInt(range[0]!, 10),
+                        max: parseInt(range[1]!, 10)
                     });
                 } else {
                     ranges.push({
@@ -671,13 +712,13 @@ var MIB = function (dir) {
             }
             return ranges;
         },
-        BuildObject: function (Object, ObjectName, macro, i, Symbols) {
+        BuildObject: function (Object: {[name: string]: TTTT}, ObjectName: string, macro: string, i: number, Symbols: Array<string>): void {
 
             var syntaxKeyword = Symbols.indexOf('SYNTAX', i);
             var m = syntaxKeyword - i;
             var c1 = syntaxKeyword + 1;
-            var SYNTAX = Symbols[c1];
-            var val = Symbols[c1 + 1];
+            var SYNTAX = Symbols[c1]!;
+            var val = Symbols[c1 + 1]!;
 
             // Normal MACROs
             if (this.MACROS.indexOf(macro) > -1 && m < 10) {
@@ -685,44 +726,46 @@ var MIB = function (dir) {
                     this.BuildObjectEnumeration(Object, ObjectName, c1, SYNTAX, val, Symbols);
                 } else if (val[0] === '(') {
                     const key = val.startsWith('(SIZE')? 'sizes' : 'ranges';
-                    Object[ObjectName]['SYNTAX'] = {};
-                    Object[ObjectName]['SYNTAX'][SYNTAX] = { [key]: this.GetRanges(val) };
+                    const syntaxObj = {} as SyntaxObj;
+                    Object[ObjectName]!['SYNTAX'] = syntaxObj;
+                    syntaxObj[SYNTAX] = { [key]: this.GetRanges(val) };
                 } else {
-                    Object[ObjectName]['SYNTAX'] = SYNTAX;
+                    Object[ObjectName]!['SYNTAX'] = SYNTAX;
                 }
             // SMIv1 INTEGER enumerations
             } else if ( Symbols[i + 1] == 'INTEGER' ) {
                 c1 = i + 1;
                 SYNTAX = 'INTEGER';
-                val = Symbols[c1 + 1];
+                val = Symbols[c1 + 1]!;
                 if ( val[0] === '{' ) {
                     this.BuildObjectEnumeration(Object, ObjectName, c1, SYNTAX, val, Symbols);
                 }
             }
         },
-        BuildObjectEnumeration: function (Object, ObjectName, c1, SYNTAX, val, Symbols) {
+        BuildObjectEnumeration: function (Object: {[name: string]: TTTT}, ObjectName: string, c1: number, SYNTAX: string, val: string, Symbols: Array<string>) {
             c1++;
-            while (Symbols[c1].indexOf("}") == -1) {
+            while (Symbols[c1]!.indexOf("}") == -1) {
                 c1++;
-                val += Symbols[c1].trim();
+                val += Symbols[c1]!.trim();
             }
-            val = val.replace("{", "").replace("}", "").split(",");
-            Object[ObjectName]['SYNTAX'] = {};
-            Object[ObjectName]['SYNTAX'][SYNTAX] = {};
-            for (var TC = 0; TC < val.length; TC++) {
-                let openParenSplit = val[TC].split(/\s*\(\s*/);
-                Object[ObjectName]['SYNTAX'][SYNTAX][openParenSplit[1].replace(/\s*\)\s*$/, '')] = openParenSplit[0].trimStart();
+            let valArray = val.replace("{", "").replace("}", "").split(",");
+            const syntaxObj = {} as SyntaxObj
+            Object[ObjectName]!['SYNTAX'] = syntaxObj;
+            syntaxObj[SYNTAX] = {};
+            for (var TC = 0; TC < valArray.length; TC++) {
+                let openParenSplit = valArray[TC]!.split(/\s*\(\s*/);
+                syntaxObj[SYNTAX]![openParenSplit[1]!.replace(/\s*\)\s*$/, '')] = openParenSplit[0]!.trimStart();
             }
         },
-        GetSummary: function (callback) {
+        GetSummary: function (callback: (summary: string) => void): void {
             var summary = '';
             for (var ModuleName in this.Modules) {
                 if (this.Modules.hasOwnProperty(ModuleName)) {
                     for (var ObjectName in this.Modules[ModuleName]) {
-                        if (this.Modules[ModuleName].hasOwnProperty(ObjectName)) {
-                            if (this.Modules[ModuleName][ObjectName]['OID']) {
+                        if (this.Modules[ModuleName]!.hasOwnProperty(ObjectName)) {
+                            if (this.Modules[ModuleName]![ObjectName]!['OID']) {
                                 //OID
-                                summary += this.Modules[ModuleName][ObjectName]['OID'] + " : " + ObjectName + '\r\n';
+                                summary += this.Modules[ModuleName]![ObjectName]!['OID'] + " : " + ObjectName + '\r\n';
                                 //callback(this.Modules[ModuleName][ObjectName]);
                                 //break;
                             }
@@ -732,21 +775,21 @@ var MIB = function (dir) {
             }
             callback(summary);
         },
-        OID: function (OBJECT_IDENTIFIER, ID, ObjectName, OD, callback) {
+        OID: function (OBJECT_IDENTIFIER: string, ID: string, ObjectName: string, OD: string, callback: (midID: string, midOD: string) => void): void {
             let members = OBJECT_IDENTIFIER.split(/\s+/);
-            let parent = members.shift();
-            let oid = members.pop();
+            let parent = members.shift()!;
+            let oid = members.pop()!;
             if ( oid.includes('(') ) {
-                let oidSplit = oid.match(/(.*)\((.+)\)$/);
-                oid = oidSplit[2];
+                let oidSplit = oid.match(/(.*)\((.+)\)$/)!;
+                oid = oidSplit[2]!;
             }
             if (parent == 'iso') {
                 let midID = ['1'];
                 let midOD = ['iso'];
                 for (let entry of members) {
-                    let match = entry.match(/(.*)\((.+)\)$/);
-                    midID.push(match[2]);
-                    midOD.push(match[1]);
+                    let match = entry.match(/(.*)\((.+)\)$/)!;
+                    midID.push(match[2]!);
+                    midOD.push(match[1]!);
                 }
                 midID.push(oid);
                 if ( ID != '' ) {
@@ -764,9 +807,9 @@ var MIB = function (dir) {
                 let midID = [];
                 let midOD = [parent];
                 for (let entry of members) {
-                    let match = entry.match(/(.*)\((.+)\)$/);
-                    midID.push(match[2]);
-                    midOD.push(match[1]);
+                    let match = entry.match(/(.*)\((.+)\)$/)!;
+                    midID.push(match[2]!);
+                    midOD.push(match[1]!);
                 }
                 midID.push(oid);
                 if ( ID != '' ) {
@@ -784,8 +827,8 @@ var MIB = function (dir) {
             }
             for (var ModuleName in this.Modules) {
                 if (this.Modules.hasOwnProperty(ModuleName)) {
-                    if (this.Modules[ModuleName][parent]) {
-                        this.OID(this.Modules[ModuleName][parent]["OBJECT IDENTIFIER"], ID, ObjectName, OD, callback);
+                    if (this.Modules[ModuleName]![parent]) {
+                        this.OID(this.Modules[ModuleName]![parent]!["OBJECT IDENTIFIER"], ID, ObjectName, OD, callback);
                         break;
                     }
                 }
@@ -797,8 +840,4 @@ var MIB = function (dir) {
     initializeBuffer(newMIB.CharBuffer);
 
     return newMIB;
-};
-
-module.exports = exports = MIB;
-exports.MIB = MIB;
-exports.native = undefined;
+}
